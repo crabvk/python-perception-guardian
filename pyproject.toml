@@ -2,6 +2,7 @@
 name = "perception-guardian"
 version = "0.1.0"
 description = "Telegram bot with image-emoji CAPTCHA challenge-response"
+license = "MIT"
 authors = ["Vyacheslav Konovalov <crabvk@protonmail.com>"]
 packages = [
     {include = "guardian"}
