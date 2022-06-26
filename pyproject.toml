@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "perception-guardian"
+version = "0.1.0"
+description = "Telegram bot with image-emoji CAPTCHA challenge-response"
+authors = ["Vyacheslav Konovalov <crabvk@protonmail.com>"]
+packages = [
+    {include = "guardian"}
+]
+
+[tool.poetry.scripts]
+guardian = "guardian:cli"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+aiohttp = "^3.8.1"
+aiogram = "^2.20"
+aioredis = "^2.0.1"
+PyYAML = "^6.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+autopep8 = "^1.6.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.autopep8]
+max_line_length = 100

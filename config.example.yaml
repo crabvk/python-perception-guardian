@@ -1,0 +1,29 @@
+telegram:
+  # Telegram token obtained from @BotFather
+  token: 0123456789:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+  # Receive updates via webhook on specified host.
+  # More info: https://core.telegram.org/bots/api#getting-updates
+  # Omit to use polling.
+  webhook_host: guardian.example.com
+
+# Host and port on which bot accepts requests from Telegram via webhook.
+# Not used with polling.
+webhook:
+  host: 127.0.0.1
+  port: 7878
+
+# Redis connection URL.
+redis:
+  url: redis://127.0.0.1:6379/0
+
+guardian:
+  # Delete CAPTCHA message after timeout.
+  captcha_expire: 60
+
+  # Delete service message ("Welcome", "Incorrect answer", etc.) after timeout.
+  message_expire: 10
+
+  # Don't show CAPTCHA for ignored users.
+  # User becomes ignored right after CAPTCHA is shown.
+  ignore_expire: 300
