@@ -2,16 +2,8 @@ import sys
 import argparse
 import yaml
 from pathlib import Path
-from guardian.app import start_bot
-
-
-class Config(dict):
-    def __init__(self, d: dict):
-        for k, v in d.items():
-            if isinstance(v, dict):
-                d[k] = Config(v)
-        super(Config, self).__init__(d)
-        self.__dict__ = self
+from guardian.app import App
+from guardian.config import Config
 
 
 def cli():
@@ -28,8 +20,9 @@ def cli():
         sys.exit(1)
 
     with open(config_file, 'r') as stream:
-        config = yaml.safe_load(stream)
-    start_bot(Config(config))
+        config = Config(yaml.safe_load(stream))
+
+    App(config).start()
 
 
 if __name__ == '__main__':
