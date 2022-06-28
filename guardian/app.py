@@ -12,7 +12,9 @@ from guardian.log import logger
 from guardian.redis import Redis
 from guardian.util import emoji_keyboard, get_user_tag, callback, log_exception
 from guardian.config import Config
+from guardian.i18n import I18n
 
+i18n = I18n()
 PERMISSIVE_ATTRIBUTES = {
     'can_send_messages': True,
     'can_send_media_messages': True,
@@ -47,7 +49,7 @@ class App:
     async def after_question_timeout(self, chat_id: int, user_id: int, message_id: int, user_tag: str):
         deleted = await self.redis.delete_answer(chat_id, user_id, message_id)
         if deleted:
-            text = f'{user_tag} Time is over.\nYou can try to join the group again after 5 minutes.'
+            text = i18n.t('en', 'captcha.time_over', user_tag=user_tag)
             await self.bot.delete_message(chat_id, message_id)
             await self.send_message(chat_id, text, self.config.guardian.message_expire)
 
@@ -56,8 +58,7 @@ class App:
         if new_member.is_bot:
             bot = await message.bot.me
             if new_member.id == bot.id:
-                await message.answer(
-                    'Great! Now make me an <b>admin</b>, so I can restrict newcomers until they pass the captcha 😉')
+                await message.answer(i18n.t('en', 'bot.make_me_admin'))
                 return
             logger.info('New member is a bot, skipping captcha.')
             return
@@ -87,7 +88,8 @@ class App:
 
         keyboard_markup = emoji_keyboard(comb.emoji, rows=2)
         user_tag = get_user_tag(new_member)
-        caption = f'{user_tag} Choose what is shown in the picture. You have {self.config.guardian.captcha_expire} seconds.'
+        caption = i18n.t('en', 'captcha.caption', user_tag=user_tag,
+                         expire=self.config.guardian.captcha_expire)
 
         # TODO: handle errors with sending photo and writing to redis
         msg = await self.bot.send_photo(message.chat.id, url, caption, reply_markup=keyboard_markup)
@@ -107,14 +109,14 @@ class App:
         answer = await self.redis.get_answer(message.chat.id, query.from_user.id, message.message_id, delete=True)
 
         if answer == None:
-            await query.answer("You're not allowed to answer this catcha.")
+            await query.answer(i18n.t('en', 'query.wrong_user'))
             return
 
         user_tag = get_user_tag(query.from_user)
         if answer == answer_expected:
             restricted, _, _ = await asyncio.gather(
                 message.chat.restrict(query.from_user.id, **PERMISSIVE_ATTRIBUTES),
-                query.answer('Correct!'),
+                query.answer(i18n.t('en', 'query.correct')),
                 message.delete(),
                 return_exceptions=True
             )
@@ -125,15 +127,15 @@ class App:
                 await message.answer(restricted)
                 return
 
-            text = f'{user_tag} Welcome!\nKindly read our rules.'
+            text = i18n.t('en', 'bot.welcome', user_tag=user_tag)
             await self.send_message(message.chat.id, text, self.config.guardian.message_expire)
         else:
             await asyncio.gather(
-                query.answer('Wrong!'),
+                query.answer(i18n.t('en', 'query.wrong')),
                 message.delete(),
                 return_exceptions=True
             )
-            text = f'{user_tag} Incorrect answer.\nYou can try to join the group again after 5 minutes.'
+            text = i18n.t('en', 'bot.incorrect_answer', user_tag=user_tag)
             await self.send_message(message.chat.id, text, self.config.guardian.message_expire)
 
     async def on_startup(self, _dp):
