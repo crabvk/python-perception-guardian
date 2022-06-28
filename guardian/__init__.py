@@ -3,7 +3,7 @@ import argparse
 import yaml
 from pathlib import Path
 from guardian.app import App
-from guardian.config import Config
+from guardian.util import AttrDict
 
 
 def cli():
@@ -20,7 +20,7 @@ def cli():
         sys.exit(1)
 
     with open(config_file, 'r') as stream:
-        config = Config(yaml.safe_load(stream))
+        config = AttrDict(yaml.safe_load(stream))
 
     App(config).start()
 
