@@ -14,6 +14,7 @@ from guardian import qwant, qna
 from guardian.log import logger
 from guardian.database import Database
 from guardian.redis import Redis
+from guardian.filters import UsernameFilter
 from guardian.util import emoji_keyboard, lang_keyboard, get_user_tag, get_lang, callback, log_exception, AttrDict, LANG_EMOJI
 from guardian.i18n import I18n
 
@@ -41,9 +42,14 @@ class App:
         self.db = Database()
         self.redis = Redis(config.redis.url)
         self.config = config
+        self.dp.filters_factory.bind(UsernameFilter, event_handlers=[self.dp.message_handlers])
         self.dp.register_message_handler(self.handle_new_chat_member,
                                          chat_type=CHAT_TYPE,
                                          content_types=ContentType.NEW_CHAT_MEMBERS)
+
+        self.dp.register_message_handler(self.handle_channel_message,
+                                         username='Channel_Bot',
+                                         chat_type=CHAT_TYPE)
 
         self.dp.register_message_handler(self.handle_left_chat_member,
                                          chat_type=CHAT_TYPE,
@@ -118,6 +124,9 @@ class App:
         await self.redis.set_answer(*args, comb.answer(), ignore_for=self.config.guardian.ignore_expire)
         asyncio.get_running_loop().call_later(self.config.guardian.captcha_expire,
                                               callback(self.after_question_timeout, *args, user_tag))
+
+    async def handle_channel_message(self, message: Message):
+        await message.delete()
 
     async def handle_left_chat_member(self, message: Message):
         try:
