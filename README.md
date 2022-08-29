@@ -4,14 +4,12 @@ Telegram bot with image-emoji CAPTCHA challenge-response.
 
 ## TODO
 
+* detect spam
+* improve readme, add list of bot features section
 * periodicly delete expired "ignore" set key/scores
 * https://stackoverflow.com/questions/61419046/administrator-permissions-check-aiogram
-* handle cases with insufficient bot permissions
-* handle cases when messages are removed by another admin
-* /lang command to set language for a group
 * /welcome command to set welcome message for a group
 * /stats command to show bot statistics: number of users passed/not passed captcha for group, etc.
-* detect spam
 * add more emoji
 
 ## Resources
