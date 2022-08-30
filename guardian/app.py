@@ -126,7 +126,11 @@ class App:
                                               callback(self.after_question_timeout, *args, user_tag))
 
     async def handle_channel_message(self, message: Message):
-        await message.delete()
+        await asyncio.gather(
+            self.bot.ban_chat_sender_chat(message.chat.id, message.sender_chat.id),
+            message.delete(),
+            return_exceptions=True
+        )
 
     async def handle_left_chat_member(self, message: Message):
         try:
