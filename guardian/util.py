@@ -2,13 +2,8 @@ import math
 import random
 import asyncio
 from functools import partial
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from guardian.log import logger
-
-LANG_EMOJI = {
-    'en': '🇬🇧',
-    'ru': '🇷🇺'
-}
 
 
 class AttrDict(dict):
@@ -29,12 +24,6 @@ def chunks(elements, n):
         yield elements[i:i + n]
 
 
-def get_lang(flag_emoji: str):
-    for lang, value in LANG_EMOJI.items():
-        if value == flag_emoji:
-            return lang
-
-
 def emoji_keyboard(emoji: list, rows: int):
     markup = InlineKeyboardMarkup()
     row_size = math.ceil(len(emoji) / rows)
@@ -44,11 +33,11 @@ def emoji_keyboard(emoji: list, rows: int):
     return markup
 
 
-def lang_keyboard(languages: list, row_size: int):
-    markup = ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-    for row in chunks(languages, row_size):
-        emoji = map(lambda lang: LANG_EMOJI.get(lang, lang), row)
-        markup.add(*emoji)
+def settings_keyboard(pairs: list, row_size: int):
+    markup = InlineKeyboardMarkup()
+    for row in chunks(pairs, row_size):
+        kb_row = (InlineKeyboardButton(pair[1], callback_data=pair[0]) for pair in row)
+        markup.row(*kb_row)
     return markup
 
 

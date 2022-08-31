@@ -12,10 +12,10 @@ from aiogram.utils.callback_data import CallbackData
 from aiogram.utils.exceptions import TelegramAPIError
 from guardian import qwant, qna
 from guardian.log import logger
-from guardian.database import Database
+from guardian.database import Database, SETTINGS
 from guardian.redis import Redis
 from guardian.filters import UsernameFilter
-from guardian.util import emoji_keyboard, lang_keyboard, get_user_tag, get_lang, callback, log_exception, AttrDict, LANG_EMOJI
+from guardian.util import emoji_keyboard, settings_keyboard, get_user_tag, callback, log_exception, AttrDict
 from guardian.i18n import I18n
 
 i18n = I18n()
@@ -28,12 +28,13 @@ PERMISSIVE_ATTRIBUTES = {
 CHAT_TYPE = [ChatType.GROUP, ChatType.SUPERGROUP]
 
 
-class LangState(StatesGroup):
-    lang = State()
-
-
 class CaptchaState(StatesGroup):
     show = State()
+
+
+class SettingsState(StatesGroup):
+    name = State()
+    value = State()
 
 
 class App:
@@ -59,20 +60,24 @@ class App:
                                          chat_type=CHAT_TYPE,
                                          content_types=ContentType.LEFT_CHAT_MEMBER)
 
-        self.dp.register_message_handler(self.handle_lang_command,
-                                         commands=['lang'],
+        self.dp.register_message_handler(self.handle_settings_command,
+                                         commands=['settings'],
                                          chat_type=CHAT_TYPE,
                                          is_chat_admin=True)
-
-        self.dp.register_message_handler(self.handle_set_lang, state=LangState.lang)
 
         self.dp.register_callback_query_handler(self.handle_inline_kb_captcha_response,
                                                 state=CaptchaState.show)
 
+        self.dp.register_callback_query_handler(self.handle_inline_kb_setting_name,
+                                                state=SettingsState.name)
+
+        self.dp.register_callback_query_handler(self.handle_inline_kb_setting_value,
+                                                state=SettingsState.value)
+
         self.dp.register_callback_query_handler(self.handle_inline_keyboard)
 
     def lang(self, chat_id: int):
-        return self.db.get_setting(chat_id, 'lang')
+        return self.db.get_setting(chat_id, 'language')
 
     # TODO: can fail if another admin deletes the message
     async def send_message(self, chat_id: int, text: str, expire: int | float):
@@ -163,21 +168,49 @@ class App:
         except TelegramAPIError as e:
             log_exception(e)
 
-    async def handle_lang_command(self, message: Message):
-        keyboard = lang_keyboard(list(LANG_EMOJI.keys()), 3)
-        await LangState.lang.set()
-        await message.reply(i18n.t(self.lang(message.chat.id), 'lang.choose'), reply_markup=keyboard)
+    async def handle_settings_command(self, message: Message, state: FSMContext):
+        pairs = map(lambda k: (k, k.replace('_', ' ').capitalize()), Database.DEFAULTS.keys())
+        keyboard = settings_keyboard(list(pairs), 2)
+        msg, _, _ = await asyncio.gather(
+            message.answer('Choose setting to change', reply_markup=keyboard),
+            message.delete(),
+            SettingsState().name.set()
+        )
+        async with state.proxy() as data:
+            data['message_id'] = msg.message_id
 
-    async def handle_set_lang(self, message: Message, state: FSMContext):
-        keyboard = types.ReplyKeyboardRemove()
-        flag = message.text.strip()
-        lang = get_lang(flag)
-        if lang is None:
-            await message.reply(i18n.t(self.lang(message.chat.id), 'lang.not_found'), reply_markup=keyboard)
-        else:
-            await self.db.set_setting(message.chat.id, 'lang', lang)
-            await message.reply(i18n.t(self.lang(message.chat.id), 'lang.changed'), reply_markup=keyboard)
-        await state.finish()
+    async def handle_inline_kb_setting_name(self, query: types.CallbackQuery, state: FSMContext):
+        setting_name, message = query.data, query.message
+        async with state.proxy() as data:
+            if data['message_id'] != message.message_id:
+                await query.answer(i18n.t(lang, 'query.wrong_user'))
+                return
+            data['name'] = setting_name
+
+            keyboard = settings_keyboard(SETTINGS[setting_name], 2)
+
+            msg, _ = await asyncio.gather(
+                message.answer(
+                    f'Choose new <code>{setting_name}</code> setting value', reply_markup=keyboard),
+                message.delete()
+            )
+            data['message_id'] = msg.message_id
+        await SettingsState.next()
+
+    async def handle_inline_kb_setting_value(self, query: types.CallbackQuery, state: FSMContext):
+        setting_value, message = query.data, query.message
+        async with state.proxy() as data:
+            if data['message_id'] != message.message_id:
+                await query.answer(i18n.t(lang, 'query.wrong_user'))
+                return
+
+        await self.db.set_setting(message.chat.id, data['name'], setting_value)
+        text = f'Setting <code>{data["name"]}</code> set to <code>{setting_value}</code>'
+        await asyncio.gather(
+            self.send_message(message.chat.id, text, self.config.guardian.message_expire),
+            message.delete(),
+            state.finish()
+        )
 
     async def handle_inline_kb_captcha_response(self, query: types.CallbackQuery, state: FSMContext):
         user_answer, message = query.data, query.message

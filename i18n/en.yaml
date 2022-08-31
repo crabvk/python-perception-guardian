@@ -10,7 +10,3 @@ en:
     make_me_admin: "Great! Now make me an <b>admin</b>, so I can restrict newcomers until they pass the captcha 😉"
     welcome: "{user_tag} Welcome!"
     incorrect_answer: "{user_tag} Incorrect answer.\nYou can try to join the group again after 5 minutes."
-  lang:
-    choose: "Choose new language for the group."
-    not_found: "Language not found."
-    changed: "Language has changed successfully."
