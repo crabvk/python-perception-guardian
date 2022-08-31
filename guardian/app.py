@@ -32,6 +32,10 @@ class LangState(StatesGroup):
     lang = State()
 
 
+class CaptchaState(StatesGroup):
+    show = State()
+
+
 class App:
     def __init__(self, config: AttrDict):
         storage = MemoryStorage()
@@ -61,7 +65,11 @@ class App:
                                          is_chat_admin=True)
 
         self.dp.register_message_handler(self.handle_set_lang, state=LangState.lang)
-        self.dp.register_callback_query_handler(self.handle_inline_kb_answer)
+
+        self.dp.register_callback_query_handler(self.handle_inline_kb_captcha_response,
+                                                state=CaptchaState.show)
+
+        self.dp.register_callback_query_handler(self.handle_inline_keyboard)
 
     def lang(self, chat_id: int):
         return self.db.get_setting(chat_id, 'lang')
@@ -72,15 +80,20 @@ class App:
         cb = callback(self.bot.delete_message, chat_id, msg.message_id)
         asyncio.get_running_loop().call_later(expire, cb)
 
-    async def after_question_timeout(self, chat_id: int, user_id: int, message_id: int, user_tag: str):
-        deleted = await self.redis.delete_answer(chat_id, user_id, message_id)
-        if deleted:
+    async def after_captcha_timeout(self, state: FSMContext, chat_id: int, message_id: int, user_tag: str):
+        current_state = await state.get_state()
+        if current_state is not None:
+            await asyncio.gather(
+                self.bot.delete_message(chat_id, message_id),
+                state.finish(),
+                return_exceptions=True
+            )
             text = i18n.t(self.lang(chat_id), 'captcha.time_over', user_tag=user_tag)
-            await self.bot.delete_message(chat_id, message_id)
             await self.send_message(chat_id, text, self.config.guardian.message_expire)
 
-    async def handle_new_chat_member(self, message: Message):
-        lang = self.lang(message.chat.id)
+    async def handle_new_chat_member(self, message: Message, state: FSMContext):
+        chat_id = message.chat.id
+        lang = self.lang(chat_id)
         new_member = message.new_chat_members[0]
         if new_member.is_bot:
             bot = await message.bot.me
@@ -104,9 +117,8 @@ class App:
             return
 
         # Don't show captcha for ignored users
-        chat_user = (message.chat.id, new_member.id)
-        if await self.redis.is_ignored(*chat_user):
-            logger.info(f'Ignoring {chat_user[0]}:{chat_user[1]}')
+        if await self.redis.is_ignored(chat_id, new_member.id):
+            logger.info(f'Ignoring {chat_id}:{new_member.id}')
             return
 
         comb = qna.pick(6)
@@ -119,11 +131,24 @@ class App:
                          expire=self.config.guardian.captcha_expire)
 
         # TODO: handle errors with sending photo and writing to redis
-        msg = await self.bot.send_photo(message.chat.id, url, caption, reply_markup=keyboard)
-        args = (*chat_user, msg.message_id)
-        await self.redis.set_answer(*args, comb.answer(), ignore_for=self.config.guardian.ignore_expire)
+        msg, _ = await asyncio.gather(
+            self.bot.send_photo(chat_id, url, caption, reply_markup=keyboard),
+            CaptchaState.show.set(),
+            return_exceptions=True
+        )
+        await self.redis.ignore(chat_id, new_member.id, duration=self.config.guardian.ignore_expire)
+        async with state.proxy() as data:
+            # Store ID of this captcha keyboard message in the user's store.
+            # Will check it later in the keyboard handler to prevent other users from using this keyboard.
+            data['message_id'] = msg.message_id
+            data['answer'] = comb.answer()
+
         asyncio.get_running_loop().call_later(self.config.guardian.captcha_expire,
-                                              callback(self.after_question_timeout, *args, user_tag))
+                                              callback(self.after_captcha_timeout,
+                                                       state,
+                                                       chat_id,
+                                                       msg.message_id,
+                                                       user_tag))
 
     async def handle_channel_message(self, message: Message):
         await asyncio.gather(
@@ -147,47 +172,53 @@ class App:
         keyboard = types.ReplyKeyboardRemove()
         flag = message.text.strip()
         lang = get_lang(flag)
-        if lang == None:
+        if lang is None:
             await message.reply(i18n.t(self.lang(message.chat.id), 'lang.not_found'), reply_markup=keyboard)
         else:
             await self.db.set_setting(message.chat.id, 'lang', lang)
             await message.reply(i18n.t(self.lang(message.chat.id), 'lang.changed'), reply_markup=keyboard)
         await state.finish()
 
-    async def handle_inline_kb_answer(self, query: types.CallbackQuery):
-        answer_expected, message = query.data, query.message
+    async def handle_inline_kb_captcha_response(self, query: types.CallbackQuery, state: FSMContext):
+        user_answer, message = query.data, query.message
         lang = self.lang(message.chat.id)
-        answer = await self.redis.get_answer(message.chat.id, query.from_user.id, message.message_id, delete=True)
 
-        if answer == None:
-            await query.answer(i18n.t(lang, 'query.wrong_user'))
-            return
-
-        user_tag = get_user_tag(query.from_user)
-        if answer == answer_expected:
-            restricted, _, _ = await asyncio.gather(
-                message.chat.restrict(query.from_user.id, **PERMISSIVE_ATTRIBUTES),
-                query.answer(i18n.t(lang, 'query.correct')),
-                message.delete(),
-                return_exceptions=True
-            )
-
-            # Don't welcome user if restriction didn't work
-            if issubclass(type(restricted), TelegramAPIError):
-                logger.error(restricted)
-                await message.answer(restricted)
+        async with state.proxy() as data:
+            if data['message_id'] != message.message_id:
+                await query.answer(i18n.t(lang, 'query.wrong_user'))
                 return
 
-            text = i18n.t(lang, 'bot.welcome', user_tag=user_tag)
-            await self.send_message(message.chat.id, text, self.config.guardian.message_expire)
-        else:
-            await asyncio.gather(
-                query.answer(i18n.t(lang, 'query.wrong')),
-                message.delete(),
-                return_exceptions=True
-            )
-            text = i18n.t(lang, 'bot.incorrect_answer', user_tag=user_tag)
-            await self.send_message(message.chat.id, text, self.config.guardian.message_expire)
+            user_tag = get_user_tag(query.from_user)
+            if data['answer'] == user_answer:
+                restricted, _, _, _ = await asyncio.gather(
+                    message.chat.restrict(query.from_user.id, **PERMISSIVE_ATTRIBUTES),
+                    query.answer(i18n.t(lang, 'query.correct')),
+                    message.delete(),
+                    state.finish(),
+                    return_exceptions=True
+                )
+
+                # Don't welcome user if restriction didn't work
+                if issubclass(type(restricted), TelegramAPIError):
+                    logger.error(restricted)
+                    await message.answer(restricted)
+                    return
+
+                text = i18n.t(lang, 'bot.welcome', user_tag=user_tag)
+                await self.send_message(message.chat.id, text, self.config.guardian.message_expire)
+            else:
+                await asyncio.gather(
+                    query.answer(i18n.t(lang, 'query.wrong')),
+                    message.delete(),
+                    state.finish(),
+                    return_exceptions=True
+                )
+                text = i18n.t(lang, 'bot.incorrect_answer', user_tag=user_tag)
+                await self.send_message(message.chat.id, text, self.config.guardian.message_expire)
+
+    async def handle_inline_keyboard(self, query: types.CallbackQuery):
+        lang = self.lang(query.message.chat.id)
+        await query.answer(i18n.t(lang, 'query.wrong_user'))
 
     async def on_startup(self, _dp):
         if self.use_webhook:
@@ -201,20 +232,18 @@ class App:
             await self.bot.delete_webhook()
 
     def start(self):
+        kwargs = {
+            'dispatcher': self.dp,
+            'on_startup': self.on_startup,
+            'on_shutdown': self.on_shutdown,
+            'skip_updates': True
+        }
         if self.use_webhook:
             start_webhook(
-                dispatcher=self.dp,
                 webhook_path='',
-                on_startup=self.on_startup,
-                on_shutdown=self.on_shutdown,
                 host=self.config.webhook.host,
                 port=self.config.webhook.port,
-                skip_updates=True
+                **kwargs
             )
         else:
-            executor.start_polling(
-                self.dp,
-                on_startup=self.on_startup,
-                on_shutdown=self.on_shutdown,
-                skip_updates=True
-            )
+            executor.start_polling(**kwargs)

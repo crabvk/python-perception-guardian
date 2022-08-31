@@ -3,7 +3,7 @@ en:
     caption: "{user_tag} Choose what is shown in the picture. You have {expire} seconds."
     time_over: "{user_tag} Time is over.\nYou can try to join the group again after 5 minutes."
   query:
-    wrong_user: "You're not allowed to answer this captcha."
+    wrong_user: "Not your keyboard."
     correct: "Correct!"
     wrong: "Wrong!"
   bot:

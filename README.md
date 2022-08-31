@@ -4,6 +4,7 @@ Telegram bot with image-emoji CAPTCHA challenge-response.
 
 ## TODO
 
+* write custom middleware to support getting language by chat_id
 * detect spam
 * improve readme, add list of bot features section
 * periodicly delete expired "ignore" set key/scores
