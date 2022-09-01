@@ -1,6 +1,4 @@
 import asyncio
-import random
-import typing
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import ChatType, ContentType, Message
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
@@ -8,11 +6,10 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils.executor import start_webhook
-from aiogram.utils.callback_data import CallbackData
 from aiogram.utils.exceptions import TelegramAPIError
 from guardian import qwant, qna
 from guardian.log import logger
-from guardian.database import Database, SETTINGS
+from guardian.database import Database, Setting
 from guardian.redis import Redis
 from guardian.filters import UsernameFilter
 from guardian.util import emoji_keyboard, settings_keyboard, get_user_tag, callback, log_exception, AttrDict
@@ -68,7 +65,7 @@ class App:
         self.dp.register_callback_query_handler(self.handle_inline_kb_captcha_response,
                                                 state=CaptchaState.show)
 
-        self.dp.register_callback_query_handler(self.handle_inline_kb_setting_name,
+        self.dp.register_callback_query_handler(self.handle_inline_kb_setting_id,
                                                 state=SettingsState.name)
 
         self.dp.register_callback_query_handler(self.handle_inline_kb_setting_value,
@@ -77,7 +74,7 @@ class App:
         self.dp.register_callback_query_handler(self.handle_inline_keyboard)
 
     def lang(self, chat_id: int):
-        return self.db.get_setting(chat_id, 'language')
+        return self.db.get_setting(chat_id, Setting.LANGUAGE)
 
     # TODO: can fail if another admin deletes the message
     async def send_message(self, chat_id: int, text: str, expire: int | float):
@@ -156,11 +153,12 @@ class App:
                                                        user_tag))
 
     async def handle_channel_message(self, message: Message):
-        await asyncio.gather(
-            self.bot.ban_chat_sender_chat(message.chat.id, message.sender_chat.id),
-            message.delete(),
-            return_exceptions=True
-        )
+        if self.db.get_setting(message.chat.id, Setting.BAN_CHANNELS):
+            await asyncio.gather(
+                self.bot.ban_chat_sender_chat(message.chat.id, message.sender_chat.id),
+                message.delete(),
+                return_exceptions=True
+            )
 
     async def handle_left_chat_member(self, message: Message):
         try:
@@ -169,43 +167,47 @@ class App:
             log_exception(e)
 
     async def handle_settings_command(self, message: Message, state: FSMContext):
-        pairs = map(lambda k: (k, k.replace('_', ' ').capitalize()), Database.DEFAULTS.keys())
+        lang = self.lang(message.chat.id)
+        pairs = map(lambda s: (str(s.value), s.title), Setting)
         keyboard = settings_keyboard(list(pairs), 2)
-        msg, _, _ = await asyncio.gather(
-            message.answer('Choose setting to change', reply_markup=keyboard),
-            message.delete(),
-            SettingsState().name.set()
+        msg, _ = await asyncio.gather(
+            message.answer(i18n.t(lang, 'settings.choose_name'), reply_markup=keyboard),
+            message.delete()
         )
         async with state.proxy() as data:
             data['message_id'] = msg.message_id
+        await SettingsState().name.set()
 
-    async def handle_inline_kb_setting_name(self, query: types.CallbackQuery, state: FSMContext):
-        setting_name, message = query.data, query.message
+    async def handle_inline_kb_setting_id(self, query: types.CallbackQuery, state: FSMContext):
+        setting, message = Setting(int(query.data)), query.message
+        lang = self.lang(message.chat.id)
         async with state.proxy() as data:
             if data['message_id'] != message.message_id:
                 await query.answer(i18n.t(lang, 'query.wrong_user'))
                 return
-            data['name'] = setting_name
-
-            keyboard = settings_keyboard(SETTINGS[setting_name], 2)
-
+            data['setting'] = setting
+            keyboard = settings_keyboard(setting.variants, 2)
+            value = self.db.get_setting(message.chat.id, setting)
+            text = i18n.t(lang, 'settings.choose_value', name=setting.title, value=value)
             msg, _ = await asyncio.gather(
-                message.answer(
-                    f'Choose new <code>{setting_name}</code> setting value', reply_markup=keyboard),
+                message.answer(text, reply_markup=keyboard),
                 message.delete()
             )
             data['message_id'] = msg.message_id
         await SettingsState.next()
 
     async def handle_inline_kb_setting_value(self, query: types.CallbackQuery, state: FSMContext):
-        setting_value, message = query.data, query.message
+        raw_value, message = query.data, query.message
+        lang = self.lang(message.chat.id)
         async with state.proxy() as data:
             if data['message_id'] != message.message_id:
                 await query.answer(i18n.t(lang, 'query.wrong_user'))
                 return
 
-        await self.db.set_setting(message.chat.id, data['name'], setting_value)
-        text = f'Setting <code>{data["name"]}</code> set to <code>{setting_value}</code>'
+        setting = data['setting']
+        await self.db.set_setting(message.chat.id, setting, raw_value)
+        text = i18n.t(lang, 'settings.value_set', name=setting.title,
+                      value=setting.convert(raw_value))
         await asyncio.gather(
             self.send_message(message.chat.id, text, self.config.guardian.message_expire),
             message.delete(),

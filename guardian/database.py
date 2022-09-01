@@ -1,20 +1,42 @@
 import aiosqlite
+from enum import Enum
 
-SETTINGS = {
-    'language': [('en', '🇬🇧'), ('ru', '🇷🇺')],
-    'ban_channels': [('1', 'Yes'), ('0', 'No')]
-}
+
+class Setting(Enum):
+    LANGUAGE = 1
+    BAN_CHANNELS = 2
+
+    @property
+    def title(self):
+        return self.name.replace('_', ' ').capitalize()
+
+    @property
+    def default_value(self):
+        match self:
+            case self.LANGUAGE:
+                return 'en'
+            case self.BAN_CHANNELS:
+                return False
+
+    @property
+    def variants(self):
+        match self:
+            case self.LANGUAGE:
+                return [('en', '🇬🇧'), ('ru', '🇷🇺')]
+            case self.BAN_CHANNELS:
+                return [('1', 'Yes'), ('0', 'No')]
+
+    @property
+    def convert(self):
+        match self:
+            case self.BAN_CHANNELS:
+                return lambda v: bool(int(v))
+            case _:
+                return str
 
 
 class Database:
     FILE = 'data.db'
-    DEFAULTS = {
-        'language': 'en',
-        'ban_channels': False
-    }
-    CONVERTS = {
-        'ban_channels': lambda v: bool(int(v))
-    }
     settings = {}
 
     async def load_settings(self):
@@ -23,26 +45,25 @@ class Database:
             db.row_factory = aiosqlite.Row
             async with db.execute(query) as cursor:
                 for s in await cursor.fetchall():
-                    chat_id, name, value = s['chat_id'], s['name'], s['value']
-                    convert = self.CONVERTS.get(name, str)
+                    setting = Setting(s['setting_id'])
+                    chat_id, value = s['chat_id'], setting.convert(s['value'])
                     self.settings[chat_id] = self.settings.get(chat_id, {})
-                    self.settings[chat_id][name] = convert(value)
+                    self.settings[chat_id][setting] = value
 
-    def get_setting(self, chat_id: int, name: str):
-        value = self.settings.get(chat_id, {}).get(name)
+    def get_setting(self, chat_id: int, setting: Setting):
+        value = self.settings.get(chat_id, {}).get(setting)
         if value == None:
-            return self.DEFAULTS.get(name)
+            return setting.default_value
         return value
 
-    async def set_setting(self, chat_id: int, name: str, value: str):
+    async def set_setting(self, chat_id: int, setting: Setting, value: str):
         query = """
-        INSERT INTO settings VALUES (:chat_id, :name, :value)
-        ON CONFLICT (chat_id, name) DO UPDATE SET value = :value
+        INSERT INTO settings VALUES (:chat_id, :setting_id, :value)
+        ON CONFLICT (chat_id, setting_id) DO UPDATE SET value = :value
         """
         async with aiosqlite.connect(self.FILE) as db:
-            await db.execute(query, {'chat_id': chat_id, 'name': name, 'value': value})
+            await db.execute(query, {'chat_id': chat_id, 'setting_id': setting.value, 'value': value})
             await db.commit()
-        convert = self.CONVERTS.get(name, str)
         s = self.settings.get(chat_id, {})
-        s[name] = convert(value)
+        s[setting] = setting.convert(value)
         self.settings[chat_id] = s

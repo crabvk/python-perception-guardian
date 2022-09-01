@@ -10,3 +10,7 @@ en:
     make_me_admin: "Great! Now make me an <b>admin</b>, so I can restrict newcomers until they pass the captcha 😉"
     welcome: "{user_tag} Welcome!"
     incorrect_answer: "{user_tag} Incorrect answer.\nYou can try to join the group again after 5 minutes."
+  settings:
+    choose_name: "Choose setting to change"
+    choose_value: "Current <b>{name}</b> setting value is <b>{value}</b>\nChoose new value"
+    value_set: "Setting <b>{name}</b> set to <b>{value}</b>"
