@@ -12,5 +12,13 @@ ru:
     incorrect_answer: "{user_tag} Неправильный ответ.\nВы можете попробовать зайти в группу снова через 5 минут."
   settings:
     choose_name: "Выберите настройку для изменения"
-    choose_value: "Текущее значение настройки <b>{name}</b> равно <b>{value}</b>\nВыберите новое значение"
-    value_set: "Настройка <b>{name}</b> установлена в <b>{value}</b>"
+    choose_value: "Текущее значение настройки <b>{name}</b>{default}: {value}\nВыберите новое значение:"
+    enter_value: "Текущее значение настройки <b>{name}</b>{default}: {value}\nВведите новое значение:"
+    value_set: "Настройка <b>{name}</b> установлена: {value}"
+    default: "по-умолчанию"
+  errors:
+    validation_error: "<b>Ошибка валидации данных:</b>\n{errors}\n\nПопробуйте еще раз"
+    welcome_message:
+      user_tag: 'Приветственное сообщение должно содержать подстроку "{user_tag}"'
+    language:
+      inclusion: "Язык должен быть один из сдедующих: {languages}"

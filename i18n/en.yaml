@@ -12,5 +12,13 @@ en:
     incorrect_answer: "{user_tag} Incorrect answer.\nYou can try to join the group again after 5 minutes."
   settings:
     choose_name: "Choose setting to change"
-    choose_value: "Current <b>{name}</b> setting value is <b>{value}</b>\nChoose new value"
-    value_set: "Setting <b>{name}</b> set to <b>{value}</b>"
+    choose_value: "Current <b>{name}</b> setting value{default}: {value}\nChoose new value:"
+    enter_value: "Current <b>{name}</b> setting value{default}: {value}\nEnter new value:"
+    value_set: "Setting <b>{name}</b> is set: {value}"
+    default: "default"
+  errors:
+    validation_error: "<b>Validation error:</b>\n{errors}\n\nPlease try again"
+    welcome_message:
+      user_tag: 'Welcome message must contain "{user_tag}" substring'
+    language:
+      inclusion: "Language must be one of the following: {languages}"

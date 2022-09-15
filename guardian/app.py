@@ -1,4 +1,5 @@
 import asyncio
+from functools import partial
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import ChatType, ContentType, Message
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
@@ -8,8 +9,10 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils.executor import start_webhook
 from aiogram.utils.exceptions import TelegramAPIError
 from guardian import qwant, qna
+from guardian import settings
 from guardian.log import logger
-from guardian.database import Database, Setting
+from guardian.database import Database
+from guardian.settings import Settings, Setting
 from guardian.redis import Redis
 from guardian.filters import UsernameFilter
 from guardian.util import emoji_keyboard, settings_keyboard, get_user_tag, callback, log_exception, AttrDict
@@ -41,42 +44,53 @@ class App:
         self.bot = Bot(token=config.telegram.token, parse_mode=types.ParseMode.HTML)
         self.dp = Dispatcher(self.bot, storage=storage)
         self.dp.middleware.setup(LoggingMiddleware(logger))
-        self.db = Database()
+        self.settings = Settings(Database())
         self.redis = Redis(config.redis.url)
         self.config = config
         self.dp.filters_factory.bind(UsernameFilter, event_handlers=[self.dp.message_handlers])
+        chat_admin = {'chat_type': CHAT_TYPE, 'is_chat_admin': True}
         self.dp.register_message_handler(self.handle_new_chat_member,
-                                         chat_type=CHAT_TYPE,
-                                         content_types=ContentType.NEW_CHAT_MEMBERS)
+                                         content_types=ContentType.NEW_CHAT_MEMBERS,
+                                         chat_type=CHAT_TYPE)
 
         self.dp.register_message_handler(self.handle_channel_message,
                                          username='Channel_Bot',
                                          chat_type=CHAT_TYPE)
 
         self.dp.register_message_handler(self.handle_left_chat_member,
-                                         chat_type=CHAT_TYPE,
-                                         content_types=ContentType.LEFT_CHAT_MEMBER)
+                                         content_types=ContentType.LEFT_CHAT_MEMBER,
+                                         chat_type=CHAT_TYPE)
 
         self.dp.register_message_handler(self.handle_settings_command,
                                          commands=['settings'],
-                                         chat_type=CHAT_TYPE,
-                                         is_chat_admin=True)
+                                         **chat_admin)
+
+        self.dp.register_message_handler(self.handle_setting_value,
+                                         state=SettingsState.value,
+                                         **chat_admin)
 
         self.dp.register_callback_query_handler(self.handle_inline_kb_captcha_response,
-                                                state=CaptchaState.show)
+                                                state=CaptchaState.show,
+                                                chat_type=CHAT_TYPE)
 
         self.dp.register_callback_query_handler(self.handle_inline_kb_setting_id,
-                                                state=SettingsState.name)
+                                                state=SettingsState.name,
+                                                **chat_admin)
 
         self.dp.register_callback_query_handler(self.handle_inline_kb_setting_value,
-                                                state=SettingsState.value)
+                                                state=SettingsState.value,
+                                                **chat_admin)
 
         self.dp.register_callback_query_handler(self.handle_inline_keyboard)
 
-    def lang(self, chat_id: int):
-        return self.db.get_setting(chat_id, Setting.LANGUAGE)
+    @staticmethod
+    def format_errors(errors: list[str], lang: str) -> str:
+        return i18n.t(lang, 'errors.validation_error', errors='\n'.join(errors))
 
-    # TODO: can fail if another admin deletes the message
+    def lang(self, chat_id: int):
+        return self.settings.get(chat_id, Setting.LANGUAGE, use_default=True)
+
+    # TODO: can throw exception if another admin deletes the message
     async def send_message(self, chat_id: int, text: str, expire: int | float):
         msg = await self.bot.send_message(chat_id, text)
         cb = callback(self.bot.delete_message, chat_id, msg.message_id)
@@ -135,8 +149,7 @@ class App:
         # TODO: handle errors with sending photo and writing to redis
         msg, _ = await asyncio.gather(
             self.bot.send_photo(chat_id, url, caption, reply_markup=keyboard),
-            CaptchaState.show.set(),
-            return_exceptions=True
+            CaptchaState.show.set()
         )
         await self.redis.ignore(chat_id, new_member.id, duration=self.config.guardian.ignore_expire)
         async with state.proxy() as data:
@@ -153,7 +166,7 @@ class App:
                                                        user_tag))
 
     async def handle_channel_message(self, message: Message):
-        if self.db.get_setting(message.chat.id, Setting.BAN_CHANNELS):
+        if self.settings.get(message.chat.id, Setting.BAN_CHANNELS, use_default=True):
             await asyncio.gather(
                 self.bot.ban_chat_sender_chat(message.chat.id, message.sender_chat.id),
                 message.delete(),
@@ -186,9 +199,24 @@ class App:
                 await query.answer(i18n.t(lang, 'query.wrong_user'))
                 return
             data['setting'] = setting
-            keyboard = settings_keyboard(setting.variants, 2)
-            value = self.db.get_setting(message.chat.id, setting)
-            text = i18n.t(lang, 'settings.choose_value', name=setting.title, value=value)
+            raw_value = self.settings.get(message.chat.id, setting)
+            default = ''
+            if raw_value is None:
+                default = ' (' + i18n.t(lang, 'settings.default') + ')'
+                if setting == Setting.WELCOME_MESSAGE:
+                    value = i18n.t(lang, 'bot.welcome', user_tag='{user_tag}')
+                else:
+                    value = setting.default_value
+            else:
+                value = raw_value
+            if setting.variants is None:
+                text = i18n.t(lang, 'settings.enter_value',
+                              name=setting.title, value=value, default=default)
+                keyboard = None
+            else:
+                text = i18n.t(lang, 'settings.choose_value',
+                              name=setting.title, value=value, default=default)
+                keyboard = settings_keyboard(setting.variants, 2)
             msg, _ = await asyncio.gather(
                 message.answer(text, reply_markup=keyboard),
                 message.delete()
@@ -204,19 +232,49 @@ class App:
                 await query.answer(i18n.t(lang, 'query.wrong_user'))
                 return
 
-        setting = data['setting']
-        await self.db.set_setting(message.chat.id, setting, raw_value)
-        text = i18n.t(lang, 'settings.value_set', name=setting.title,
-                      value=setting.convert(raw_value))
-        await asyncio.gather(
-            self.send_message(message.chat.id, text, self.config.guardian.message_expire),
-            message.delete(),
-            state.finish()
-        )
+            setting = data['setting']
+            if setting.variants is None:
+                return
+
+            await self.settings.set(message.chat.id, setting, raw_value)
+            text = i18n.t(lang, 'settings.value_set', name=setting.title,
+                          value=setting.from_str(raw_value))
+            await asyncio.gather(
+                self.send_message(message.chat.id, text, self.config.guardian.message_expire),
+                message.delete()
+            )
+        await state.finish()
+
+    async def handle_setting_value(self, message: Message, state: FSMContext):
+        async with state.proxy() as data:
+            setting = data['setting']
+            if setting.variants is not None:
+                return
+
+            value, chat_id = message.text.strip(), message.chat.id
+            lang = self.lang(chat_id)
+            is_valid, errors = setting.validate(value, partial(i18n.t, lang))
+            if not is_valid:
+                msg, _, _ = await asyncio.gather(
+                    message.answer(self.format_errors(errors, lang)),
+                    self.bot.delete_message(chat_id, data['message_id']),
+                    message.delete()
+                )
+                data['message_id'] = msg.message_id
+                return
+
+            await self.settings.set(chat_id, setting, value)
+            text = i18n.t(lang, 'settings.value_set', name=setting.title, value=value)
+            await asyncio.gather(
+                self.send_message(chat_id, text, self.config.guardian.message_expire),
+                self.bot.delete_message(chat_id, data['message_id']),
+                message.delete()
+            )
+        await state.finish()
 
     async def handle_inline_kb_captcha_response(self, query: types.CallbackQuery, state: FSMContext):
-        user_answer, message = query.data, query.message
-        lang = self.lang(message.chat.id)
+        user_answer, message, chat_id = query.data, query.message, query.message.chat.id
+        lang = self.lang(chat_id)
 
         async with state.proxy() as data:
             if data['message_id'] != message.message_id:
@@ -239,8 +297,12 @@ class App:
                     await message.answer(restricted)
                     return
 
-                text = i18n.t(lang, 'bot.welcome', user_tag=user_tag)
-                await self.send_message(message.chat.id, text, self.config.guardian.message_expire)
+                text = self.settings.get(chat_id, Setting.WELCOME_MESSAGE)
+                if text is None:
+                    text = i18n.t(lang, 'bot.welcome', user_tag=user_tag)
+                else:
+                    text = text.format(user_tag=user_tag)
+                await self.send_message(chat_id, text, self.config.guardian.message_expire)
             else:
                 await asyncio.gather(
                     query.answer(i18n.t(lang, 'query.wrong')),
@@ -249,7 +311,7 @@ class App:
                     return_exceptions=True
                 )
                 text = i18n.t(lang, 'bot.incorrect_answer', user_tag=user_tag)
-                await self.send_message(message.chat.id, text, self.config.guardian.message_expire)
+                await self.send_message(chat_id, text, self.config.guardian.message_expire)
 
     async def handle_inline_keyboard(self, query: types.CallbackQuery):
         lang = self.lang(query.message.chat.id)
@@ -259,7 +321,7 @@ class App:
         if self.use_webhook:
             webhook_url = f'https://{self.config.telegram.webhook_host}/bot{self.config.telegram.token}/'
             await self.bot.set_webhook(webhook_url)
-        await self.db.load_settings()
+        await self.settings.load()
 
     async def on_shutdown(self, _dp):
         logger.warning('Shutting down..')
