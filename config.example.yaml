@@ -1,5 +1,5 @@
 telegram:
-  # Telegram token obtained from @BotFather
+  # Telegram token as obtained from @BotFather
   token: 0123456789:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
   # Receive updates via webhook on specified host.
