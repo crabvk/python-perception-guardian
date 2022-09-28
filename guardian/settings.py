@@ -5,27 +5,27 @@ LANGUAGES = ['en', 'ru']
 FLAGS = ['🇬🇧', '🇷🇺']
 
 
-def validate_welcome_message(message: str, t) -> tuple[bool, list[str] | None]:
+def validate_welcome_message(message: str, i18n) -> tuple[bool, list[str] | None]:
     errors = []
     if '{user_tag}' not in message:
-        errors.append(t('errors.welcome_message.user_tag'))
+        errors.append(i18n.t('errors.welcome_message.user_tag'))
     if len(errors) == 0:
         return True, None
     else:
         return False, errors
 
 
-def validate_language(lang: str, t) -> tuple[bool, list[str] | None]:
+def validate_language(lang: str, i18n) -> tuple[bool, list[str] | None]:
     errors = []
     if lang not in LANGUAGES:
-        errors.append(t('errors.language.inclusion', languages=', '.join(LANGUAGES)))
+        errors.append(i18n.t('errors.language.inclusion', languages=', '.join(LANGUAGES)))
     if len(errors) == 0:
         return True, None
     else:
         return False, errors
 
 
-def dummy_validator(_, _t) -> tuple[bool, list[str] | None]:
+def dummy_validator(_, _i18n) -> tuple[bool, list[str] | None]:
     return True, None
 
 
@@ -41,8 +41,6 @@ class Setting(Enum):
     @property
     def default_value(self):
         match self:
-            case self.LANGUAGE:
-                return LANGUAGES[0]
             case self.BAN_CHANNELS:
                 return False
 
@@ -86,9 +84,9 @@ class Settings:
             self.settings[chat_id] = self.settings.get(chat_id, {})
             self.settings[chat_id][setting] = value
 
-    def get(self, chat_id: int, setting: Setting, use_default: bool = False):
+    def get(self, chat_id: int, setting: Setting):
         value = self.settings.get(chat_id, {}).get(setting)
-        if value == None and use_default:
+        if value is None:
             return setting.default_value
         return value
 

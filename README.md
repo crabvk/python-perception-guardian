@@ -21,10 +21,10 @@ Use `/settings` command to change bot settings for the group.
 
 ## TODO
 
+* log link to the image, all emoji variants and the chosen one
 * validate "Welcome message" markup
 * check redis connection on startup
 * limit number of New Chat Members per minute, don't show captcha when limit has reached
-* write custom middleware to support getting language by chat_id
 * /vacuum command to search and delete "Deleted Account"s
 * detect spam
 * periodicly delete expired "ignore" set key/scores
