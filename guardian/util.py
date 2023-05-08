@@ -2,7 +2,7 @@ import math
 import asyncio
 from functools import partial
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from guardian.log import logger
+from guardian import log
 
 
 class AttrDict(dict):
@@ -48,4 +48,5 @@ def get_user_tag(user):
 
 
 def log_exception(e: Exception):
-    logger.error(f'{e} [{e.__class__.__name__}]')
+    log.logger.error(f'{e} [{e.__class__.__name__}]')
+    pass

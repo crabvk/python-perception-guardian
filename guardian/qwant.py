@@ -1,7 +1,7 @@
 
 import aiohttp
 import random
-from guardian.log import logger
+from guardian import log
 
 PARAMS = {
     'count': 10,
@@ -18,7 +18,7 @@ HEADERS = {
 
 
 async def get_image_url(query: str) -> str | None:
-    logger.info(f'Searching Qwant images with query: {query}')
+    log.logger.info(f'Searching Qwant images with query: {query}')
     params = PARAMS | {'q': query}
     async with aiohttp.ClientSession() as session:
         async with session.get('https://api.qwant.com/v3/search/images', params=params, headers=HEADERS) as response:

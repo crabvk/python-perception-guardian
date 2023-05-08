@@ -1,6 +1,6 @@
 import aioredis
 import time
-from guardian.log import logger
+from guardian import log
 
 
 class Redis:
@@ -12,7 +12,7 @@ class Redis:
     async def ignore(self, chat_id: int, user_id: int, duration: int):
         key = f'{chat_id}:{user_id}'
         epoch = time.time() + duration
-        logger.info(f'Ignore {key} until {epoch}')
+        log.logger.info(f'Ignore {key} until {epoch}')
         await self.redis.zadd('ignore', {key: epoch})
 
     async def is_ignored(self, chat_id: int, user_id: int):

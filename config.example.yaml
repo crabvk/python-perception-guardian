@@ -27,3 +27,5 @@ guardian:
   # Don't show CAPTCHA for ignored users.
   # User becomes ignored right after CAPTCHA is shown.
   ignore_expire: 300
+
+log_level: info

@@ -7,8 +7,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils.executor import start_webhook
 from aiogram.utils.exceptions import TelegramAPIError
-from guardian import qwant, qna
-from guardian.log import logger
+from guardian import qwant, qna, log
 from guardian.database import Database
 from guardian.settings import Settings, Setting
 from guardian.redis import Redis
@@ -36,6 +35,9 @@ class SettingsState(StatesGroup):
 
 class App:
     def __init__(self, config: AttrDict):
+        global logger
+
+        logger = log.init(config.log_level)
         storage = MemoryStorage()
         self.use_webhook = 'webhook_host' in config.telegram
         self.bot = Bot(token=config.telegram.token, parse_mode=types.ParseMode.HTML)
@@ -89,7 +91,9 @@ class App:
         return self.settings.get(chat_id, Setting.LANGUAGE)
 
     # TODO: can throw exception if another admin deletes the message
-    async def send_message(self, chat_id: int, text: str, expire: int | float):
+    async def send_temp_message(self, chat_id: int, text: str, expire: int | float | None = None):
+        if expire is None:
+            expire = self.config.guardian.message_expire
         msg = await self.bot.send_message(chat_id, text)
         cb = callback(self.bot.delete_message, chat_id, msg.message_id)
         asyncio.get_running_loop().call_later(expire, cb)
@@ -102,7 +106,7 @@ class App:
                 state.finish(),
                 return_exceptions=True
             )
-            await self.send_message(chat_id, text, self.config.guardian.message_expire)
+            await self.send_temp_message(chat_id, text)
 
     async def handle_new_chat_member(self, message: Message, state: FSMContext, i18n):
         chat_id = message.chat.id
@@ -234,7 +238,7 @@ class App:
             text = i18n.t('settings.value_set', name=setting.title,
                           value=setting.from_str(raw_value))
             await asyncio.gather(
-                self.send_message(message.chat.id, text, self.config.guardian.message_expire),
+                self.send_temp_message(message.chat.id, text),
                 message.delete()
             )
         await state.finish()
@@ -259,7 +263,7 @@ class App:
             await self.settings.set(chat_id, setting, value)
             text = i18n.t('settings.value_set', name=setting.title, value=value)
             await asyncio.gather(
-                self.send_message(chat_id, text, self.config.guardian.message_expire),
+                self.send_temp_message(chat_id, text),
                 self.bot.delete_message(chat_id, data['message_id']),
                 message.delete()
             )
@@ -294,7 +298,7 @@ class App:
                     text = i18n.t('bot.welcome', user_tag=user_tag)
                 else:
                     text = text.format(user_tag=user_tag)
-                await self.send_message(chat_id, text, self.config.guardian.message_expire)
+                await self.send_temp_message(chat_id, text)
             else:
                 await asyncio.gather(
                     query.answer(i18n.t('query.wrong')),
@@ -303,7 +307,7 @@ class App:
                     return_exceptions=True
                 )
                 text = i18n.t('bot.incorrect_answer', user_tag=user_tag)
-                await self.send_message(chat_id, text, self.config.guardian.message_expire)
+                await self.send_temp_message(chat_id, text)
 
     async def handle_inline_keyboard(self, query: types.CallbackQuery, i18n):
         await query.answer(i18n.t('query.wrong_user'))

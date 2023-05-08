@@ -1,3 +1,4 @@
+import sys
 import logging
 
 
@@ -23,9 +24,27 @@ class Formatter(logging.Formatter):
         return formatter.format(record)
 
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-ch.setFormatter(Formatter())
-logger.addHandler(ch)
+class Log(sys.modules[__name__].__class__):
+    def init(self, level: str):
+        level = level.upper()
+        if level not in logging._nameToLevel:
+            raise ValueError('Unknown logging level: %r' % level)
+
+        self.level = logging._nameToLevel[level]
+        self.lgr = logging.getLogger()
+        self.lgr.setLevel(self.level)
+        ch = logging.StreamHandler()
+        ch.setLevel(self.level)
+        ch.setFormatter(Formatter())
+        self.lgr.addHandler(ch)
+        return self.lgr
+
+    def get_logger(self):
+        if getattr(self, 'lgr', None) is None:
+            raise RuntimeError('Logger was not initialized')
+        return self.lgr
+
+    logger = property(get_logger)
+
+
+sys.modules[__name__].__class__ = Log

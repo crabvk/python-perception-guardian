@@ -13,7 +13,8 @@ Telegram bot with image-emoji CAPTCHA challenge-response.
 
 ## Configuration
 
-Copy [config.example.yaml](config.example.yaml) to *config.yaml*. There are comments describing all the config settings.
+Copy [config.example.yaml](config.example.yaml) to *config.yaml*. See comments for config settings descriptions.  
+No defaults, all config settings are mandatory.
 
 ## Bot settings
 
