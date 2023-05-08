@@ -322,6 +322,7 @@ class App:
         logger.warning('Shutting down..')
         if self.use_webhook:
             await self.bot.delete_webhook()
+        await self.redis.close()
 
     def start(self):
         kwargs = {

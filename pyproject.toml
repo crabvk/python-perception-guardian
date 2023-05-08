@@ -1,9 +1,10 @@
 [tool.poetry]
 name = "perception-guardian"
-version = "0.1.0"
+version = "0.2.0"
 description = "Telegram bot with image-emoji CAPTCHA challenge-response"
 license = "MIT"
 authors = ["Vyacheslav Konovalov <crabvk@protonmail.com>"]
+readme = "README.md"
 packages = [
     {include = "guardian"}
 ]
@@ -14,14 +15,14 @@ guardian = "guardian:cli"
 [tool.poetry.dependencies]
 python = "^3.10"
 aiohttp = "^3.8"
-aiogram = "^2.22"
-aioredis = "^2.0"
+aiogram = "^2.25"
 PyYAML = "^6.0"
-aiosqlite = "^0.17"
+aiosqlite = "^0.19"
+redis = "^4.5"
 
 [tool.poetry.dev-dependencies]
-pytest = "^5.2"
-autopep8 = "^1.7"
+pytest = "^7.3"
+autopep8 = "^2.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
