@@ -8,7 +8,7 @@ Telegram bot with image-emoji CAPTCHA challenge-response.
 
 * Show CAPTCHA for new members
 * Ban channels [(optional)](#bot-settings)
-* Change bot language for the group (only English and Russian supported at the time)
+* Change bot language for a group (only English and Russian supported at the time)
 * Set custom Welcome message
 
 ## Configuration
@@ -18,7 +18,7 @@ No defaults, all config settings are mandatory.
 
 ## Bot settings
 
-Use `/settings` command to change bot settings for the group.
+Use `/settings` command to change bot settings for a group.
 
 ## TODO
 
