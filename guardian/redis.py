@@ -21,5 +21,13 @@ class Redis:
             return False
         return time.time() < epoch
 
+    async def ping(self):
+        if not await self.redis.ping():
+            raise RedisPingError('PING command returned False')
+
     async def close(self):
         return await self.redis.close()
+
+
+class RedisPingError(Exception):
+    pass

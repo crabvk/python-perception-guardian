@@ -313,6 +313,7 @@ class App:
         await query.answer(i18n.t('query.wrong_user'))
 
     async def on_startup(self, _dp):
+        await self.redis.ping()
         if self.use_webhook:
             webhook_url = f'https://{self.config.telegram.webhook_host}/bot{self.config.telegram.token}/'
             await self.bot.set_webhook(webhook_url)
