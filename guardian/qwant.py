@@ -18,7 +18,7 @@ HEADERS = {
 
 
 async def get_image_url(query: str) -> str | None:
-    log.logger.info(f'Searching Qwant images with query: {query}')
+    log.logger.info('Searching images on Qwant')
     params = PARAMS | {'q': query}
     async with aiohttp.ClientSession() as session:
         async with session.get('https://api.qwant.com/v3/search/images', params=params, headers=HEADERS) as response:

@@ -139,7 +139,10 @@ class App:
 
         comb = qna.pick(6)
         # TODO: handle request errors from Qwant.com
+        log.logger.info(
+            f'Query phrase: "{comb.query_phrase}", Variants: {comb.emoji}, Answer: {comb.answer()}')
         url = await qwant.get_image_url(comb.query_phrase)
+        log.logger.info(f'Image URL: {url}')
 
         keyboard = emoji_keyboard(comb.emoji, rows=2)
         user_tag = get_user_tag(new_member)
