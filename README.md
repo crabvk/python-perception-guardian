@@ -1,3 +1,5 @@
+# DISCONTINUED: Further bot development is carried out [here](https://github.com/crabvk/perception-guardian) in Rust.
+
 # Perception Guardian
 
 Telegram bot with image-emoji CAPTCHA challenge-response.
